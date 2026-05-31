@@ -1,0 +1,210 @@
+version: '3.8'
+
+services:
+  # ─────────────────────────────────────────
+  # PostgreSQL + TimescaleDB
+  # ─────────────────────────────────────────
+  postgres:
+    image: timescale/timescaledb:latest-pg15
+    container_name: brvm-postgres
+    env_file: .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U brvm -d brvm_trading"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - brvm-network
+
+  # ─────────────────────────────────────────
+  # Redis (Cache + Pub/Sub + Streams)
+  # ─────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: brvm-redis
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    networks:
+      - brvm-network
+
+  # ─────────────────────────────────────────
+  # Rust Engine (Calcul + Scoring)
+  # ─────────────────────────────────────────
+  rust-engine:
+    build:
+      context: ./rust-engine
+      dockerfile: Dockerfile
+    container_name: brvm-rust-engine
+    env_file: .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      RUST_LOG: info
+    ports:
+      - "127.0.0.1:50051:50051"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - brvm-network
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────
+  # Go API Gateway
+  # ─────────────────────────────────────────
+  go-api:
+    build:
+      context: ./go-api
+      dockerfile: Dockerfile
+    container_name: brvm-go-api
+    env_file: .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      PORT: ${PORT}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      - rust-engine
+      - postgres
+      - redis
+    networks:
+      - brvm-network
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────
+  # Go Collector (Scheduler)
+  # ─────────────────────────────────────────
+  go-collector:
+    build:
+      context: ./go-collector
+      dockerfile: Dockerfile
+    container_name: brvm-go-collector
+    env_file: .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      GITHUB_CSV_URL: ${GITHUB_CSV_URL}
+      SIKAFINANCE_URL: ${SIKAFINANCE_URL}
+      FLUXBOURSE_URL: ${FLUXBOURSE_URL}
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - brvm-network
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────
+  # Go Notifier (Push/SMS/Email)
+  # ─────────────────────────────────────────
+  go-notifier:
+    build:
+      context: ./go-notifier
+      dockerfile: Dockerfile
+    container_name: brvm-go-notifier
+    env_file: .env
+    environment:
+      REDIS_URL: ${REDIS_URL}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
+      SENDGRID_API_KEY: ${SENDGRID_API_KEY}
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL}
+    depends_on:
+      - redis
+    networks:
+      - brvm-network
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────
+  # Prometheus (Monitoring)
+  # ─────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: brvm-prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    networks:
+      - brvm-network
+
+  # ─────────────────────────────────────────
+  # Grafana (Dashboards)
+  # ─────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    container_name: brvm-grafana
+    env_file: .env
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD}
+    ports:
+      - "127.0.0.1:3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+    networks:
+      - brvm-network
+
+  # ─────────────────────────────────────────
+  # Redis Commander (Dev only — remove in prod)
+  # ─────────────────────────────────────────
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: brvm-redis-commander
+    environment:
+      REDIS_HOSTS: local:redis:6379
+    ports:
+      - "127.0.0.1:8081:8081"
+    networks:
+      - brvm-network
+    profiles:
+      - dev
+
+  # ─────────────────────────────────────────
+  # MinIO (Data Lake - S3 compatible)
+  # ─────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: brvm-minio
+    env_file: .env
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    networks:
+      - brvm-network
+    profiles:
+      - dev
+
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+  minio_data:
+
+networks:
+  brvm-network:
+    driver: bridge

@@ -1,0 +1,41 @@
+# Go
+go-api/bin/
+go-collector/bin/
+go-notifier/bin/
+*.exe
+*.test
+*.out
+
+# Rust
+rust-engine/target/
+**/*.rs.bk
+
+# Flutter
+flutter-app/.dart_tool/
+flutter-app/.packages
+flutter-app/build/
+flutter-app/.flutter-plugins
+flutter-app/.flutter-plugins-dependencies
+flutter-app/pubspec.lock
+
+# Docker
+.docker/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+*.secret
+
+# Data
+data/*.csv
+!data/.gitkeep
+
+# OS
+.DS_Store
+Thumbs.db

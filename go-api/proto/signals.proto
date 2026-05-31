@@ -1,0 +1,94 @@
+syntax = "proto3";
+
+package brvm.signals;
+
+option go_package = "github.com/brvm/go-api/proto";
+
+// SignalService — gRPC interface between Go API and Rust Engine
+service SignalService {
+  // GenerateSignal computes technical + fundamental score for a single ticker
+  rpc GenerateSignal(SignalRequest) returns (SignalResponse);
+
+  // ScanAllTickers runs parallel analysis on all BRVM tickers
+  rpc ScanAllTickers(ScanRequest) returns (ScanResponse);
+
+  // HealthCheck verifies the engine is running
+  rpc HealthCheck(HealthRequest) returns (HealthResponse);
+}
+
+message SignalRequest {
+  string ticker = 1;           // e.g. "SNTS"
+  repeated double prices = 2;  // OHLCV close prices (last N days)
+  repeated int64 volumes = 3;  // corresponding volumes
+  double current_price = 4;    // latest close price
+  FundamentalData fundamental = 5;  // optional fundamental data
+  repeated double highs = 6;   // OHLCV high prices
+  repeated double lows = 7;    // OHLCV low prices
+}
+
+message FundamentalData {
+  optional double per = 1;
+  optional double roe = 2;
+  optional double dividend_yield = 3;
+  optional double eps = 4;
+  optional double book_value_per_share = 5;
+  optional double debt_to_equity = 6;
+  optional double revenue_growth = 7;
+  optional double net_profit = 8;
+}
+
+message SignalResponse {
+  string ticker = 1;
+  double composite_score = 2;
+  string signal = 3;           // STRONG_BUY, BUY, HOLD, SELL, STRONG_SELL
+  double confidence = 4;
+  repeated string reasons = 5;
+  TechnicalIndicators technical = 6;
+  map<string, double> fundamental_scores = 7;
+  double technical_score = 8;
+  double risk_score = 9;
+}
+
+message TechnicalIndicators {
+  optional double sma_20 = 1;
+  optional double sma_50 = 2;
+  optional double ema_12 = 3;
+  optional double ema_26 = 4;
+  optional double rsi_14 = 5;
+  optional double macd = 6;
+  optional double macd_signal = 7;
+  optional double bollinger_upper = 8;
+  optional double bollinger_lower = 9;
+  optional double atr_14 = 10;
+  optional double volume_sma_20 = 11;
+}
+
+message ScanRequest {
+  repeated TickerData tickers = 1;
+}
+
+message TickerData {
+  string symbol = 1;
+  string name = 2;
+  string country = 3;
+  string sector = 4;
+  repeated double prices = 5;
+  repeated int64 volumes = 6;
+  double current_price = 7;
+  FundamentalData fundamental = 8;
+  repeated double highs = 9;
+  repeated double lows = 10;
+}
+
+message ScanResponse {
+  repeated SignalResponse signals = 1;
+  int32 total_scanned = 2;
+  int32 total_signals = 3;
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  string status = 1;
+  string version = 2;
+}

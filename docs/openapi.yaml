@@ -1,0 +1,530 @@
+openapi: 3.0.3
+info:
+  title: BRVM Trading Engine API
+  description: API REST et WebSocket pour la collecte, l'analyse et le trading sur la BRVM
+  version: 1.0.0
+  contact:
+    name: BRVM Trading Engine Team
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local development
+  - url: https://api.brvm-engine.io/api/v1
+    description: Production
+
+tags:
+  - name: Market
+    description: Données de marché BRVM
+  - name: Fundamental
+    description: Données fondamentales des entreprises
+  - name: Signals
+    description: Signaux d'achat/vente générés par le moteur
+  - name: Portfolio
+    description: Gestion du portefeuille utilisateur
+  - name: Orders
+    description: Passage d'ordres (virtuel ou réel via SGI)
+  - name: Auth
+    description: Authentification JWT
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Inscription utilisateur
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        201:
+          description: Utilisateur créé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        400:
+          description: Données invalides
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Connexion utilisateur
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        200:
+          description: Connexion réussie
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        401:
+          description: Identifiants invalides
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Rafraîchir le token d'accès
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        200:
+          description: Nouveau token généré
+
+  /market/tickers:
+    get:
+      tags: [Market]
+      summary: Liste tous les tickers BRVM
+      security:
+        - BearerAuth: []
+      responses:
+        200:
+          description: Liste des tickers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Ticker'
+
+  /market/data/{ticker}:
+    get:
+      tags: [Market]
+      summary: Données OHLCV historiques
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: ticker
+          in: path
+          required: true
+          schema:
+            type: string
+            example: SNTS
+        - name: days
+          in: query
+          schema:
+            type: integer
+            default: 90
+            maximum: 365
+        - name: interval
+          in: query
+          schema:
+            type: string
+            enum: [daily, weekly]
+            default: daily
+      responses:
+        200:
+          description: Série temporelle OHLCV
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ticker:
+                    type: string
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MarketDataPoint'
+
+  /market/latest/{ticker}:
+    get:
+      tags: [Market]
+      summary: Dernière cotation disponible
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: ticker
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Dernière cotation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketDataPoint'
+
+  /fundamental/{ticker}:
+    get:
+      tags: [Fundamental]
+      summary: Données fondamentales
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: ticker
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Ratios fondamentaux
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FundamentalData'
+
+  /signals/{ticker}:
+    get:
+      tags: [Signals]
+      summary: Signal actuel pour un ticker
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: ticker
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Signal de trading
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignalResult'
+
+  /signals/scan:
+    get:
+      tags: [Signals]
+      summary: Scan complet du marché BRVM
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: min_score
+          in: query
+          schema:
+            type: number
+            default: 60
+        - name: signal_type
+          in: query
+          schema:
+            type: string
+            enum: [BUY, STRONG_BUY, SELL, STRONG_SELL, HOLD]
+      responses:
+        200:
+          description: Liste des signaux
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SignalResult'
+
+  /signals/subscribe:
+    get:
+      tags: [Signals]
+      summary: WebSocket - Flux temps réel des signaux
+      security:
+        - BearerAuth: []
+      responses:
+        101:
+          description: Connexion WebSocket établie
+
+  /portfolio:
+    get:
+      tags: [Portfolio]
+      summary: Portefeuille de l'utilisateur
+      security:
+        - BearerAuth: []
+      responses:
+        200:
+          description: Positions et valorisation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_value:
+                    type: number
+                  total_pnl:
+                    type: number
+                  positions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PortfolioPosition'
+
+  /orders:
+    get:
+      tags: [Orders]
+      summary: Historique des ordres
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PENDING, FILLED, CANCELLED, ALL]
+            default: ALL
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 200
+      responses:
+        200:
+          description: Liste des ordres
+
+    post:
+      tags: [Orders]
+      summary: Passer un ordre
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderRequest'
+      responses:
+        201:
+          description: Ordre créé
+        400:
+          description: Paramètres invalides
+        402:
+          description: Fonds insuffisants
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [email, password, first_name, last_name]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+        first_name:
+          type: string
+        last_name:
+          type: string
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+
+    AuthResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        expires_in:
+          type: integer
+        user:
+          $ref: '#/components/schemas/User'
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        first_name:
+          type: string
+        last_name:
+          type: string
+
+    Ticker:
+      type: object
+      properties:
+        symbol:
+          type: string
+          example: SNTS
+        name:
+          type: string
+          example: Sonatel
+        country:
+          type: string
+          example: Sénégal
+        sector:
+          type: string
+          example: Télécom
+
+    MarketDataPoint:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        open:
+          type: number
+        high:
+          type: number
+        low:
+          type: number
+        close:
+          type: number
+        volume:
+          type: integer
+        daily_return:
+          type: number
+        source:
+          type: string
+
+    FundamentalData:
+      type: object
+      properties:
+        ticker:
+          type: string
+        per:
+          type: number
+          nullable: true
+        roe:
+          type: number
+          nullable: true
+        dividend_yield:
+          type: number
+          nullable: true
+        eps:
+          type: number
+          nullable: true
+        book_value_per_share:
+          type: number
+          nullable: true
+        debt_to_equity:
+          type: number
+          nullable: true
+        revenue_growth:
+          type: number
+          nullable: true
+        net_profit:
+          type: number
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+
+    SignalResult:
+      type: object
+      properties:
+        ticker:
+          $ref: '#/components/schemas/Ticker'
+        composite_score:
+          type: number
+          example: 87.4
+        signal:
+          type: string
+          enum: [STRONG_BUY, BUY, HOLD, SELL, STRONG_SELL]
+        confidence:
+          type: number
+          example: 0.85
+        reasons:
+          type: array
+          items:
+            type: string
+        technical_indicators:
+          type: object
+          properties:
+            rsi_14:
+              type: number
+            sma_20:
+              type: number
+            sma_50:
+              type: number
+            macd:
+              type: number
+            bollinger_upper:
+              type: number
+            bollinger_lower:
+              type: number
+            atr_14:
+              type: number
+        fundamental_scores:
+          type: object
+          properties:
+            per_score:
+              type: number
+            roe_score:
+              type: number
+            dividend_score:
+              type: number
+            growth_score:
+              type: number
+            debt_score:
+              type: number
+        timestamp:
+          type: string
+          format: date-time
+
+    PortfolioPosition:
+      type: object
+      properties:
+        ticker:
+          type: string
+        quantity:
+          type: integer
+        avg_buy_price:
+          type: number
+        current_price:
+          type: number
+        market_value:
+          type: number
+        unrealized_pnl:
+          type: number
+        unrealized_pnl_pct:
+          type: number
+
+    OrderRequest:
+      type: object
+      required: [ticker, side, quantity, price, order_type]
+      properties:
+        ticker:
+          type: string
+          example: SNTS
+        side:
+          type: string
+          enum: [BUY, SELL]
+        quantity:
+          type: integer
+          minimum: 1
+        price:
+          type: number
+          minimum: 0
+        order_type:
+          type: string
+          enum: [LIMIT, MARKET, STOP_LOSS, TAKE_PROFIT]
+        stop_price:
+          type: number
+          description: Requis pour STOP_LOSS et TAKE_PROFIT
