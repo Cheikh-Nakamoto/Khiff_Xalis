@@ -37,8 +37,7 @@ The commercial license grants you the right to:
 
 Contact us for pricing:
 
-- **Email**: [your email]
-- **Website**: [your website]
+- **Email**: feppdougou@gmail.com
 
 ## FAQ
 
