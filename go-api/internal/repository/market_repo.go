@@ -235,16 +235,36 @@ func (r *MarketRepo) GetMacroData(ctx context.Context, ticker string) (*model.Ma
 			macro.TauxDirecteur = &v
 		case "change_xof_eur":
 			macro.ChangeXofEur = &v
+		case "change_xof_usd":
+			macro.ChangeXofUsd = &v
 		case "cocoa_price":
 			macro.CocoaPrice = &v
 		case "oil_price":
 			macro.OilPrice = &v
+		case "cashew_price":
+			macro.CashewPrice = &v
+		case "gold_price":
+			macro.GoldPrice = &v
+		case "rubber_price":
+			macro.RubberPrice = &v
+		case "palm_oil_price":
+			macro.PalmOilPrice = &v
 		case "political_stability":
 			macro.PoliticalStability = &v
+		case "political_crisis":
+			macro.PoliticalCrisis = value > 0.5
 		case "sovereign_rating":
 			r := int32(v)
 			macro.SovereignRating = &r
 		}
+	}
+
+	// Fetch commodity beta for this ticker if it exists
+	var beta float64
+	err = r.DB.QueryRow(ctx,
+		`SELECT beta FROM ticker_commodity_map WHERE ticker = $1 LIMIT 1`, ticker).Scan(&beta)
+	if err == nil {
+		macro.CommodityBeta = &beta
 	}
 
 	return macro, nil

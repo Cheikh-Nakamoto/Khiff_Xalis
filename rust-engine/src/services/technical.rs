@@ -57,6 +57,10 @@ impl TechnicalAnalysisService {
             indicators.volume_sma_20 = Some(sum as f64 / 20.0);
         }
 
+        // Illiquidity filters — critical for BRVM (many tickers trade < 10 times/day)
+        indicators.amihud_20 = self.amihud(closes, volumes, 20);
+        indicators.zero_return_ratio = self.zero_return_ratio(closes, 20);
+
         indicators
     }
 
@@ -141,6 +145,64 @@ impl TechnicalAnalysisService {
             tr_sum += tr;
         }
         tr_sum / period as f64
+    }
+
+    /// Amihud (2002) illiquidity ratio over `period` days.
+    ///
+    /// ILLIQ = (1/D) × Σ |r_d| / (volume_d × close_d) × 10^6
+    ///
+    /// Interpretation:
+    /// - Near 0      → very liquid (blue chips: SNTS, SGBC)
+    /// - 0.01–0.1    → moderate illiquidity (most BRVM tickers)
+    /// - > 1.0       → dangerously illiquid — execution cost will swamp the alpha
+    pub fn amihud(&self, closes: &[f64], volumes: &[i64], period: usize) -> Option<f64> {
+        if closes.len() < period + 1 || volumes.len() < period + 1 {
+            return None;
+        }
+        let n = closes.len();
+        let mut illiq_sum = 0.0_f64;
+        let mut valid_days = 0usize;
+
+        for i in (n - period)..n {
+            let prev_close = closes[i - 1];
+            if prev_close <= 0.0 {
+                continue;
+            }
+            let abs_return = ((closes[i] - prev_close) / prev_close).abs();
+            // Turnover in FCFA: volume × closing price
+            let turnover = volumes[i] as f64 * closes[i];
+            if turnover > 0.0 {
+                illiq_sum += abs_return / turnover;
+                valid_days += 1;
+            }
+            // Days with zero volume count toward zero_return_ratio, not amihud sum
+        }
+
+        if valid_days == 0 {
+            return None;
+        }
+
+        Some(illiq_sum / valid_days as f64 * 1_000_000.0)
+    }
+
+    /// Fraction of days in `period` where the closing price did not change.
+    ///
+    /// > 0.40 → more than 40% of days had no price discovery → signal should be suppressed.
+    /// > 0.60 → market is effectively frozen for this ticker.
+    pub fn zero_return_ratio(&self, closes: &[f64], period: usize) -> Option<f64> {
+        if closes.len() < period + 1 {
+            return None;
+        }
+        let n = closes.len();
+        let mut zero_days = 0usize;
+
+        for i in (n - period)..n {
+            if (closes[i] - closes[i - 1]).abs() < 1e-9 {
+                zero_days += 1;
+            }
+        }
+
+        Some(zero_days as f64 / period as f64)
     }
 }
 

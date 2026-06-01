@@ -98,10 +98,17 @@ func (s *SignalService) callEngineForSignal(ctx context.Context, ticker string) 
 			Inflation:          macroData.Inflation,
 			TauxDirecteur:      macroData.TauxDirecteur,
 			ChangeXofEur:       macroData.ChangeXofEur,
+			ChangeXofUsd:       macroData.ChangeXofUsd,
 			CocoaPrice:         macroData.CocoaPrice,
 			OilPrice:           macroData.OilPrice,
+			CashewPrice:        macroData.CashewPrice,
+			GoldPrice:          macroData.GoldPrice,
+			RubberPrice:        macroData.RubberPrice,
+			PalmOilPrice:       macroData.PalmOilPrice,
 			PoliticalStability: macroData.PoliticalStability,
+			PoliticalCrisis:    macroData.PoliticalCrisis,
 			SovereignRating:    macroData.SovereignRating,
+			CommodityBeta:      macroData.CommodityBeta,
 		}
 	}
 
@@ -112,27 +119,34 @@ func (s *SignalService) callEngineForSignal(ctx context.Context, ticker string) 
 
 	// Convert proto response to model
 	sr := &model.SignalResult{
-		Ticker:         model.Ticker{Symbol: resp.Ticker},
-		CompositeScore: resp.CompositeScore,
-		Signal:         resp.Signal,
-		Confidence:     resp.Confidence,
-		Reasons:        resp.Reasons,
-		Timestamp:      time.Now(),
+		Ticker:               model.Ticker{Symbol: resp.Ticker},
+		CompositeScore:       resp.CompositeScore,
+		Signal:               resp.Signal,
+		Confidence:           resp.Confidence,
+		Reasons:              resp.Reasons,
+		MacroScore:           resp.MacroScore,
+		MacroReasons:         resp.MacroReasons,
+		SeasonalityScore:     resp.SeasonalityScore,
+		KellyFraction:        resp.KellyFraction,
+		SuggestedPositionPct: resp.SuggestedPositionPct,
+		Timestamp:            time.Now(),
 	}
 
 	if resp.Technical != nil {
 		sr.TechnicalIndicators = map[string]interface{}{
-			"sma_20":          resp.Technical.Sma_20,
-			"sma_50":          resp.Technical.Sma_50,
-			"ema_12":          resp.Technical.Ema_12,
-			"ema_26":          resp.Technical.Ema_26,
-			"rsi_14":          resp.Technical.Rsi_14,
-			"macd":            resp.Technical.Macd,
+			"sma_20":            resp.Technical.Sma_20,
+			"sma_50":            resp.Technical.Sma_50,
+			"ema_12":            resp.Technical.Ema_12,
+			"ema_26":            resp.Technical.Ema_26,
+			"rsi_14":            resp.Technical.Rsi_14,
+			"macd":              resp.Technical.Macd,
 			"macd_signal":     resp.Technical.MacdSignal,
 			"bollinger_upper": resp.Technical.BollingerUpper,
 			"bollinger_lower": resp.Technical.BollingerLower,
 			"atr_14":          resp.Technical.Atr_14,
 			"volume_sma_20":   resp.Technical.VolumeSma_20,
+			"amihud_20":       resp.Technical.Amihud_20,
+			"zero_return_ratio": resp.Technical.ZeroReturnRatio,
 		}
 	}
 
@@ -213,10 +227,17 @@ func (s *SignalService) callEngineForScan(ctx context.Context, minScore float64,
 					Inflation:          macroData.Inflation,
 					TauxDirecteur:      macroData.TauxDirecteur,
 					ChangeXofEur:       macroData.ChangeXofEur,
+					ChangeXofUsd:       macroData.ChangeXofUsd,
 					CocoaPrice:         macroData.CocoaPrice,
 					OilPrice:           macroData.OilPrice,
+					CashewPrice:        macroData.CashewPrice,
+					GoldPrice:          macroData.GoldPrice,
+					RubberPrice:        macroData.RubberPrice,
+					PalmOilPrice:       macroData.PalmOilPrice,
 					PoliticalStability: macroData.PoliticalStability,
+					PoliticalCrisis:    macroData.PoliticalCrisis,
 					SovereignRating:    macroData.SovereignRating,
+					CommodityBeta:      macroData.CommodityBeta,
 				}
 			}
 
@@ -255,27 +276,34 @@ func (s *SignalService) callEngineForScan(ctx context.Context, minScore float64,
 		}
 
 		sr := model.SignalResult{
-			Ticker:         model.Ticker{Symbol: sig.Ticker},
-			CompositeScore: sig.CompositeScore,
-			Signal:         sig.Signal,
-			Confidence:     sig.Confidence,
-			Reasons:        sig.Reasons,
-			Timestamp:      time.Now(),
+			Ticker:               model.Ticker{Symbol: sig.Ticker},
+			CompositeScore:       sig.CompositeScore,
+			Signal:               sig.Signal,
+			Confidence:           sig.Confidence,
+			Reasons:              sig.Reasons,
+			MacroScore:           sig.MacroScore,
+			MacroReasons:         sig.MacroReasons,
+			SeasonalityScore:     sig.SeasonalityScore,
+			KellyFraction:        sig.KellyFraction,
+			SuggestedPositionPct: sig.SuggestedPositionPct,
+			Timestamp:            time.Now(),
 		}
 
 		if sig.Technical != nil {
 			sr.TechnicalIndicators = map[string]interface{}{
-				"sma_20":          sig.Technical.Sma_20,
-				"sma_50":          sig.Technical.Sma_50,
-				"ema_12":          sig.Technical.Ema_12,
-				"ema_26":          sig.Technical.Ema_26,
-				"rsi_14":          sig.Technical.Rsi_14,
+				"sma_20":            sig.Technical.Sma_20,
+				"sma_50":            sig.Technical.Sma_50,
+				"ema_12":            sig.Technical.Ema_12,
+				"ema_26":            sig.Technical.Ema_26,
+				"rsi_14":            sig.Technical.Rsi_14,
 				"macd":            sig.Technical.Macd,
 				"macd_signal":     sig.Technical.MacdSignal,
 				"bollinger_upper": sig.Technical.BollingerUpper,
 				"bollinger_lower": sig.Technical.BollingerLower,
 				"atr_14":          sig.Technical.Atr_14,
 				"volume_sma_20":   sig.Technical.VolumeSma_20,
+				"amihud_20":       sig.Technical.Amihud_20,
+				"zero_return_ratio": sig.Technical.ZeroReturnRatio,
 			}
 		}
 

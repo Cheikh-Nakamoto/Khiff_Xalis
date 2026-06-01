@@ -1,3 +1,6 @@
+// Copyright 2026 BRVM Trading Engine Contributors
+// Licensed under the GNU AGPL-3.0. See LICENSE for details.
+
 syntax = "proto3";
 
 package brvm.signals;
@@ -24,6 +27,8 @@ message SignalRequest {
   FundamentalData fundamental = 5;  // optional fundamental data
   repeated double highs = 6;   // OHLCV high prices
   repeated double lows = 7;    // OHLCV low prices
+  MacroData macro = 8;         // macroeconomic context
+  string user_id = 9;          // for diversification scoring
 }
 
 message FundamentalData {
@@ -37,6 +42,30 @@ message FundamentalData {
   optional double net_profit = 8;
 }
 
+message MacroData {
+  optional double inflation = 1;
+  optional double taux_directeur = 2;
+  optional double change_xof_eur = 3;
+  optional double cocoa_price = 4;
+  optional double oil_price = 5;
+  optional double political_stability = 6;
+  optional int32 sovereign_rating = 7;
+  optional double change_xof_usd = 8;
+  optional double cashew_price = 9;
+  optional double gold_price = 10;
+  optional double rubber_price = 11;
+  optional double palm_oil_price = 12;
+  bool political_crisis = 13;
+  optional double commodity_beta = 14;
+}
+
+message PortfolioPosition {
+  string ticker = 1;
+  string country = 2;
+  string sector = 3;
+  double market_value = 4;
+}
+
 message SignalResponse {
   string ticker = 1;
   double composite_score = 2;
@@ -47,6 +76,12 @@ message SignalResponse {
   map<string, double> fundamental_scores = 7;
   double technical_score = 8;
   double risk_score = 9;
+  double macro_score = 10;
+  double diversification_score = 11;
+  repeated string macro_reasons = 12;
+  double seasonality_score = 13;
+  double kelly_fraction = 14;
+  double suggested_position_pct = 15;
 }
 
 message TechnicalIndicators {
@@ -61,6 +96,8 @@ message TechnicalIndicators {
   optional double bollinger_lower = 9;
   optional double atr_14 = 10;
   optional double volume_sma_20 = 11;
+  optional double amihud_20 = 12;
+  optional double zero_return_ratio = 13;
 }
 
 message ScanRequest {
@@ -78,6 +115,7 @@ message TickerData {
   FundamentalData fundamental = 8;
   repeated double highs = 9;
   repeated double lows = 10;
+  MacroData macro = 11;
 }
 
 message ScanResponse {

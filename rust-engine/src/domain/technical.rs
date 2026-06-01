@@ -14,4 +14,11 @@ pub struct TechnicalIndicators {
     pub bollinger_lower: Option<f64>,
     pub atr_14: Option<f64>,
     pub volume_sma_20: Option<f64>,
+    /// Amihud illiquidity ratio over 20 days.
+    /// ILLIQ = (1/D) × Σ |r_d| / (volume_d × price_d) × 10^6
+    /// Higher = more illiquid. None if insufficient data.
+    pub amihud_20: Option<f64>,
+    /// Fraction of days in the last 20 with zero return (price unchanged).
+    /// > 0.4 = dangerously illiquid, signal should be suppressed.
+    pub zero_return_ratio: Option<f64>,
 }

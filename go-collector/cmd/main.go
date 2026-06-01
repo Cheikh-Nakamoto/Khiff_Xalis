@@ -85,6 +85,14 @@ func main() {
 		}
 	})
 
+	// Political risk (ECOWAS, GDELT): daily at 7h GMT (before market opens).
+	cronScheduler.AddFunc("0 7 * * *", func() {
+		log.Println("[MAIN] Running ECOWAS political risk collection...")
+		if err := c.CollectPoliticalRisk(ctx); err != nil {
+			log.Printf("[MAIN] Political risk error: %v", err)
+		}
+	})
+
 	cronScheduler.Start()
 	log.Println("[MAIN] Scheduler started. Waiting for cron jobs...")
 

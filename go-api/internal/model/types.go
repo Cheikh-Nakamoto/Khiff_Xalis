@@ -78,20 +78,30 @@ type MacroData struct {
 	OilPrice           *float64 `json:"oil_price,omitempty"`
 	PoliticalStability *float64 `json:"political_stability,omitempty"`
 	SovereignRating    *int32   `json:"sovereign_rating,omitempty"`
+	ChangeXofUsd       *float64 `json:"change_xof_usd,omitempty"`
+	CashewPrice        *float64 `json:"cashew_price,omitempty"`
+	GoldPrice          *float64 `json:"gold_price,omitempty"`
+	RubberPrice        *float64 `json:"rubber_price,omitempty"`
+	PalmOilPrice       *float64 `json:"palm_oil_price,omitempty"`
+	PoliticalCrisis    bool     `json:"political_crisis"`
+	CommodityBeta      *float64 `json:"commodity_beta,omitempty"`
 }
 
 // SignalResult is the output of the scoring engine.
 type SignalResult struct {
-	Ticker              Ticker                 `json:"ticker"`
-	CompositeScore      float64                `json:"composite_score"`
-	Signal              string                 `json:"signal"`
-	Confidence          float64                `json:"confidence"`
-	Reasons             []string               `json:"reasons"`
-	TechnicalIndicators map[string]interface{} `json:"technical_indicators"`
-	FundamentalScores   map[string]float64     `json:"fundamental_scores"`
-	MacroScore          float64                `json:"macro_score,omitempty"`
-	MacroReasons        []string               `json:"macro_reasons,omitempty"`
-	Timestamp           time.Time              `json:"timestamp"`
+	Ticker               Ticker                 `json:"ticker"`
+	CompositeScore       float64                `json:"composite_score"`
+	Signal               string                 `json:"signal"`
+	Confidence           float64                `json:"confidence"`
+	Reasons              []string               `json:"reasons"`
+	TechnicalIndicators  map[string]interface{} `json:"technical_indicators"`
+	FundamentalScores    map[string]float64     `json:"fundamental_scores"`
+	MacroScore           float64                `json:"macro_score,omitempty"`
+	MacroReasons         []string               `json:"macro_reasons,omitempty"`
+	SeasonalityScore     float64                `json:"seasonality_score,omitempty"`
+	KellyFraction        float64                `json:"kelly_fraction,omitempty"`
+	SuggestedPositionPct float64                `json:"suggested_position_pct,omitempty"`
+	Timestamp            time.Time              `json:"timestamp"`
 }
 
 // PortfolioPosition represents a user's holding.

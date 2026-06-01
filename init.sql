@@ -110,3 +110,12 @@ CREATE TABLE macroeconomic_data (
 
 SELECT create_hypertable('macroeconomic_data', 'time', chunk_time_interval => INTERVAL '1 month');
 CREATE INDEX idx_macro_country_indicator_time ON macroeconomic_data (country, indicator, time DESC);
+
+-- Commodity sensitivity map
+CREATE TABLE IF NOT EXISTS ticker_commodity_map (
+    ticker VARCHAR(10) NOT NULL,
+    commodity VARCHAR(50) NOT NULL,
+    beta DOUBLE PRECISION DEFAULT 1.0,
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (ticker, commodity)
+);

@@ -58,10 +58,17 @@ impl SignalService for SignalServiceImpl {
                 inflation: m.inflation,
                 taux_directeur: m.taux_directeur,
                 change_xof_eur: m.change_xof_eur,
+                change_xof_usd: m.change_xof_usd,
                 cocoa_price: m.cocoa_price,
                 oil_price: m.oil_price,
+                cashew_price: m.cashew_price,
+                gold_price: m.gold_price,
+                rubber_price: m.rubber_price,
+                palm_oil_price: m.palm_oil_price,
                 political_stability: m.political_stability,
+                political_crisis: m.political_crisis,
                 sovereign_rating: m.sovereign_rating,
+                commodity_beta: m.commodity_beta,
             },
             None => EngineMacroData::default(),
         };
@@ -96,6 +103,8 @@ impl SignalService for SignalServiceImpl {
                 bollinger_lower: result.technical_indicators.bollinger_lower,
                 atr_14: result.technical_indicators.atr_14,
                 volume_sma_20: result.technical_indicators.volume_sma_20,
+                amihud_20: result.technical_indicators.amihud_20,
+                zero_return_ratio: result.technical_indicators.zero_return_ratio,
             }),
             fundamental_scores: result.fundamental_scores,
             technical_score: result.technical_score,
@@ -103,6 +112,9 @@ impl SignalService for SignalServiceImpl {
             macro_score: result.macro_score,
             diversification_score: result.diversification_score,
             macro_reasons: result.macro_reasons,
+            seasonality_score: result.seasonality_score,
+            kelly_fraction: result.kelly_fraction,
+            suggested_position_pct: result.suggested_position_pct,
         };
 
         Ok(Response::new(response))
@@ -157,10 +169,17 @@ impl SignalService for SignalServiceImpl {
                         inflation: m.inflation,
                         taux_directeur: m.taux_directeur,
                         change_xof_eur: m.change_xof_eur,
+                        change_xof_usd: m.change_xof_usd,
                         cocoa_price: m.cocoa_price,
                         oil_price: m.oil_price,
+                        cashew_price: m.cashew_price,
+                        gold_price: m.gold_price,
+                        rubber_price: m.rubber_price,
+                        palm_oil_price: m.palm_oil_price,
                         political_stability: m.political_stability,
+                        political_crisis: m.political_crisis,
                         sovereign_rating: m.sovereign_rating,
+                        commodity_beta: m.commodity_beta,
                     },
                 );
             }
@@ -188,6 +207,8 @@ impl SignalService for SignalServiceImpl {
                     bollinger_lower: r.technical_indicators.bollinger_lower,
                     atr_14: r.technical_indicators.atr_14,
                     volume_sma_20: r.technical_indicators.volume_sma_20,
+                    amihud_20: r.technical_indicators.amihud_20,
+                    zero_return_ratio: r.technical_indicators.zero_return_ratio,
                 }),
                 fundamental_scores: r.fundamental_scores,
                 technical_score: r.technical_score,
@@ -195,6 +216,9 @@ impl SignalService for SignalServiceImpl {
                 macro_score: r.macro_score,
                 diversification_score: r.diversification_score,
                 macro_reasons: r.macro_reasons,
+                seasonality_score: r.seasonality_score,
+                kelly_fraction: r.kelly_fraction,
+                suggested_position_pct: r.suggested_position_pct,
             })
             .collect();
 

@@ -7,7 +7,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
+	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -22,13 +27,8 @@ type BCEAOIndicator struct {
 	Date      time.Time
 }
 
-// CollectBCEAO fetches macroeconomic indicators (inflation, taux directeur, change XOF/EUR)
-// from BCEAO and inserts them into the macroeconomic_data table.
-//
-// Data sources:
-// - BCEAO website (scraping) for taux directeur
-// - World Bank API for inflation by country
-// - ECB/BCEAO for XOF/EUR exchange rate (fixed at 655.957 but monitoring for peg stability)
+// CollectBCEAO fetches macroeconomic indicators (inflation, taux directeur, change XOF/EUR, change XOF/USD)
+// from BCEAO/World Bank/ECB and inserts them into the macroeconomic_data table.
 func (c *Collector) CollectBCEAO(ctx context.Context) error {
 	log.Println("[BCEAO] Starting macroeconomic data collection...")
 
@@ -64,8 +64,7 @@ func (c *Collector) CollectBCEAO(ctx context.Context) error {
 		})
 	}
 
-	// 2. BCEAO taux directeur (currently 3.50% as of 2024)
-	// This is a single rate for all UEMOA countries
+	// 2. BCEAO taux directeur (scraped or fallbacks)
 	tauxDirecteur, err := c.fetchBCEAORate(ctx)
 	if err != nil {
 		log.Printf("[BCEAO] Warning: could not fetch taux directeur: %v, using default 3.50", err)
@@ -82,7 +81,6 @@ func (c *Collector) CollectBCEAO(ctx context.Context) error {
 	}
 
 	// 3. XOF/EUR exchange rate (fixed peg at 655.957)
-	// Monitor for any deviation
 	xofEurRate := 655.957
 	for _, code := range countries {
 		indicators = append(indicators, BCEAOIndicator{
@@ -90,6 +88,22 @@ func (c *Collector) CollectBCEAO(ctx context.Context) error {
 			Indicator: "change_xof_eur",
 			Value:     xofEurRate,
 			Unit:      "FCFA/EUR",
+			Date:      now,
+		})
+	}
+
+	// 4. XOF/USD exchange rate (real-time ECB/ExchangeRate API)
+	xofUsdRate, err := c.fetchXOFUSDRate(ctx)
+	if err != nil {
+		log.Printf("[BCEAO] Warning: could not fetch XOF/USD exchange rate: %v, falling back to 600.0", err)
+		xofUsdRate = 600.0 // Reasonable historic peg-based USD value
+	}
+	for _, code := range countries {
+		indicators = append(indicators, BCEAOIndicator{
+			Country:   countryNames[code],
+			Indicator: "change_xof_usd",
+			Value:     xofUsdRate,
+			Unit:      "FCFA/USD",
 			Date:      now,
 		})
 	}
@@ -105,20 +119,23 @@ func (c *Collector) CollectBCEAO(ctx context.Context) error {
 
 // fetchWorldBankInflation fetches annual inflation rate from World Bank API.
 func (c *Collector) fetchWorldBankInflation(ctx context.Context, countryCode string) (float64, error) {
-	// World Bank API: FP.CPI.TOTL.ZG = Consumer price inflation (annual %)
 	url := fmt.Sprintf(
 		"https://api.worldbank.org/v2/country/%s/indicator/FP.CPI.TOTL.ZG?format=json&date=2023:2026&per_page=5",
 		countryCode,
 	)
 
-	req, err := c.HTTP.Get(url)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return 0, err
+	}
+	resp, err := c.HTTP.Do(req)
 	if err != nil {
 		return 0, fmt.Errorf("HTTP request: %w", err)
 	}
-	defer req.Body.Close()
+	defer resp.Body.Close()
 
 	var result []json.RawMessage
-	if err := json.NewDecoder(req.Body).Decode(&result); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return 0, fmt.Errorf("decode JSON: %w", err)
 	}
 
@@ -134,7 +151,6 @@ func (c *Collector) fetchWorldBankInflation(ctx context.Context, countryCode str
 		return 0, fmt.Errorf("parse data: %w", err)
 	}
 
-	// Get most recent non-null value
 	for _, d := range data {
 		if d.Value != nil {
 			return *d.Value, nil
@@ -145,20 +161,80 @@ func (c *Collector) fetchWorldBankInflation(ctx context.Context, countryCode str
 }
 
 // fetchBCEAORate attempts to scrape the BCEAO taux directeur.
-// Falls back to known rate if scraping fails.
+// Falls back to last known rate in DB, or 3.50 if database is empty.
 func (c *Collector) fetchBCEAORate(ctx context.Context) (float64, error) {
-	select {
-	case <-ctx.Done():
-		return 0, ctx.Err()
-	default:
+	// First, fetch the last stored rate in our database as the fallback
+	var lastRate float64
+	dbErr := c.DB.QueryRow(ctx,
+		`SELECT value FROM macroeconomic_data 
+		 WHERE indicator = 'taux_directeur' 
+		 ORDER BY time DESC LIMIT 1`).Scan(&lastRate)
+
+	fallbackRate := 3.50
+	if dbErr == nil && lastRate > 0 {
+		fallbackRate = lastRate
 	}
 
-	// BCEAO does not have a public API. The taux directeur is published on their website.
-	// As of 2024, the rate is 3.50%. We attempt to scrape, fallback to hardcoded.
-	//
-	// TODO: Implement proper scraping when BCEAO website structure is stable
-	// For now, return the known rate
-	return 3.50, nil
+	// Try scraping BRVM/BCEAO news
+	req, err := http.NewRequestWithContext(ctx, "GET", "https://www.brvm.org/fr/taux-directeur", nil)
+	if err != nil {
+		return fallbackRate, nil
+	}
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return fallbackRate, nil
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fallbackRate, nil
+	}
+
+	// Look for rate like "3.50%" or "3,50%" or "3.75"
+	re := regexp.MustCompile(`taux directeur[^0-9]*(\d+[,.]\d+)`)
+	matches := re.FindSubmatch(body)
+	if len(matches) > 1 {
+		valStr := strings.ReplaceAll(string(matches[1]), ",", ".")
+		if val, err := strconv.ParseFloat(valStr, 64); err == nil {
+			return val, nil
+		}
+	}
+
+	return fallbackRate, nil
+}
+
+// fetchXOFUSDRate fetches the real-time XOF/USD exchange rate.
+func (c *Collector) fetchXOFUSDRate(ctx context.Context) (float64, error) {
+	url := "https://open.er-api.com/v6/latest/USD"
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return 0, err
+	}
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Result string             `json:"result"`
+		Rates  map[string]float64 `json:"rates"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return 0, err
+	}
+
+	if result.Result != "success" {
+		return 0, fmt.Errorf("API error status: %s", result.Result)
+	}
+
+	rate, ok := result.Rates["XOF"]
+	if !ok {
+		return 0, fmt.Errorf("XOF rate not found in USD rates response")
+	}
+
+	return rate, nil
 }
 
 // insertMacroData inserts macroeconomic indicators into the database.

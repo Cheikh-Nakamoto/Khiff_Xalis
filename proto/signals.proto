@@ -50,6 +50,13 @@ message MacroData {
   optional double oil_price = 5;
   optional double political_stability = 6;
   optional int32 sovereign_rating = 7;
+  optional double change_xof_usd = 8;
+  optional double cashew_price = 9;
+  optional double gold_price = 10;
+  optional double rubber_price = 11;
+  optional double palm_oil_price = 12;
+  bool political_crisis = 13;
+  optional double commodity_beta = 14;
 }
 
 message PortfolioPosition {
@@ -72,6 +79,9 @@ message SignalResponse {
   double macro_score = 10;
   double diversification_score = 11;
   repeated string macro_reasons = 12;
+  double seasonality_score = 13;
+  double kelly_fraction = 14;
+  double suggested_position_pct = 15;
 }
 
 message TechnicalIndicators {
@@ -86,6 +96,8 @@ message TechnicalIndicators {
   optional double bollinger_lower = 9;
   optional double atr_14 = 10;
   optional double volume_sma_20 = 11;
+  optional double amihud_20 = 12;
+  optional double zero_return_ratio = 13;
 }
 
 message ScanRequest {
