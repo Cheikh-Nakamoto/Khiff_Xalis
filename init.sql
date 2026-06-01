@@ -50,7 +50,7 @@ CREATE TABLE fundamental_data (
 
 -- Scoring results
 CREATE TABLE scoring_results (
-    id SERIAL PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     ticker VARCHAR(10) NOT NULL,
     composite_score DOUBLE PRECISION,
     signal_type VARCHAR(20),
@@ -64,7 +64,7 @@ CREATE INDEX idx_scoring_ticker_time ON scoring_results (ticker, created_at DESC
 
 -- Portfolios
 CREATE TABLE portfolios (
-    id SERIAL PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID REFERENCES users(id),
     ticker VARCHAR(10),
     quantity INTEGER,
@@ -74,7 +74,7 @@ CREATE TABLE portfolios (
 
 -- Orders
 CREATE TABLE orders (
-    id SERIAL PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID REFERENCES users(id),
     ticker VARCHAR(10),
     side VARCHAR(4),
@@ -89,10 +89,24 @@ CREATE TABLE orders (
 
 -- Refresh tokens
 CREATE TABLE refresh_tokens (
-    id SERIAL PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID REFERENCES users(id),
     token VARCHAR(500) NOT NULL,
     expires_at TIMESTAMPTZ NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX idx_refresh_token ON refresh_tokens (token);
+
+-- Macroeconomic data (hypertable)
+CREATE TABLE macroeconomic_data (
+    time TIMESTAMPTZ NOT NULL,
+    country VARCHAR(50) NOT NULL,
+    indicator VARCHAR(50) NOT NULL,
+    value DOUBLE PRECISION,
+    unit VARCHAR(20),
+    source VARCHAR(100),
+    confidence DOUBLE PRECISION DEFAULT 1.0
+);
+
+SELECT create_hypertable('macroeconomic_data', 'time', chunk_time_interval => INTERVAL '1 month');
+CREATE INDEX idx_macro_country_indicator_time ON macroeconomic_data (country, indicator, time DESC);

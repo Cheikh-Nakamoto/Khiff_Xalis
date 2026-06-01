@@ -103,8 +103,21 @@ func (c *Collector) CollectFluxBourse(ctx context.Context) error {
 		fundamentals = append(fundamentals, rec)
 	})
 
-	if err := scraper.Visit(c.Config.FluxbourseURL); err != nil {
-		return err
+	var err error
+	maxRetries := 3
+	for i := 0; i < maxRetries; i++ {
+		if i > 0 {
+			time.Sleep(time.Duration(1<<i) * time.Second)
+		}
+		err = scraper.Visit(c.Config.FluxbourseURL)
+		if err == nil {
+			break
+		}
+		log.Printf("[FLUXBOURSE] Scrape attempt %d failed: %v", i+1, err)
+	}
+
+	if err != nil {
+		return fmt.Errorf("fluxbourse failed after %d retries: %w", maxRetries, err)
 	}
 
 	log.Printf("[FLUXBOURSE] Scraped %d fundamental records", len(fundamentals))

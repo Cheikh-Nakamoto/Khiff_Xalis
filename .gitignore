@@ -2,6 +2,9 @@
 go-api/bin/
 go-collector/bin/
 go-notifier/bin/
+go-notifier/go-notifier
+go-api/go-api
+go-collector/go-collector
 *.exe
 *.test
 *.out

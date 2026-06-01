@@ -27,18 +27,12 @@ func (h *SignalHandler) GetSignal(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid ticker format"})
 	}
 
-	// Check Redis cache
-	cached := h.SignalService.GetCachedSignalString(c.Context(), ticker)
-	if cached != "" {
-		return c.JSON(fiber.Map{"cached": true, "ticker": ticker, "signal": cached})
-	}
-
-	_, sr, err := h.SignalService.GetSignal(c.Context(), ticker)
+	cached, sr, err := h.SignalService.GetSignal(c.Context(), ticker)
 	if err != nil {
 		return c.Status(404).JSON(fiber.Map{"error": "No signal data available. Collector may not have run yet."})
 	}
 
-	return c.JSON(sr)
+	return c.JSON(fiber.Map{"cached": cached, "data": sr})
 }
 
 // ScanSignals handles GET /api/v1/signals/scan.

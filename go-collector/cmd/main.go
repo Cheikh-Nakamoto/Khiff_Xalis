@@ -7,11 +7,13 @@ import (
 	"context"
 	"log"
 	"time"
+	"net/http"
 
 	"github.com/brvm/go-collector/internal"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"github.com/robfig/cron/v3"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
@@ -67,8 +69,33 @@ func main() {
 		c.CleanupCache(ctx)
 	})
 
+	// BCEAO macroeconomic data: 1st of each month at 8h GMT.
+	cronScheduler.AddFunc("0 8 1 * *", func() {
+		log.Println("[MAIN] Running BCEAO macroeconomic collection...")
+		if err := c.CollectBCEAO(ctx); err != nil {
+			log.Printf("[MAIN] BCEAO error: %v", err)
+		}
+	})
+
+	// Commodity prices (cocoa, oil): daily at 17h GMT (after markets close).
+	cronScheduler.AddFunc("0 17 * * *", func() {
+		log.Println("[MAIN] Running commodity price collection...")
+		if err := c.CollectCommodities(ctx); err != nil {
+			log.Printf("[MAIN] Commodity error: %v", err)
+		}
+	})
+
 	cronScheduler.Start()
 	log.Println("[MAIN] Scheduler started. Waiting for cron jobs...")
+
+	// Start prometheus metrics server on 9090
+	go func() {
+		http.Handle("/metrics", promhttp.Handler())
+		log.Println("[MAIN] Starting metrics server on :9090")
+		if err := http.ListenAndServe(":9090", nil); err != nil {
+			log.Printf("[MAIN] Metrics server error: %v", err)
+		}
+	}()
 
 	// Block forever.
 	select {}

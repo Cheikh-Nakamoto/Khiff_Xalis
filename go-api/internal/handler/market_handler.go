@@ -32,18 +32,32 @@ func (h *MarketHandler) GetMarketData(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid ticker format"})
 	}
 
-	days := c.QueryInt("days", 90)
-	if days < 1 || days > 365 {
-		days = 90
+	limit := c.QueryInt("limit", 100)
+	if limit < 1 || limit > 1000 {
+		limit = 100
 	}
+	page := c.QueryInt("page", 1)
+	if page < 1 {
+		page = 1
+	}
+	offset := (page - 1) * limit
 
-	data, err := h.MarketRepo.GetMarketData(c.Context(), ticker, days)
+	data, total, err := h.MarketRepo.GetMarketDataPaginated(c.Context(), ticker, limit, offset)
 	if err != nil {
 		log.Printf("DB query error: %v", err)
 		return c.Status(500).JSON(fiber.Map{"error": "Database query failed"})
 	}
 
-	return c.JSON(fiber.Map{"ticker": ticker, "days": days, "count": len(data), "data": data})
+	totalPages := (int(total) + limit - 1) / limit
+
+	return c.JSON(fiber.Map{
+		"ticker":      ticker,
+		"page":        page,
+		"limit":       limit,
+		"total":       total,
+		"total_pages": totalPages,
+		"data":        data,
+	})
 }
 
 // GetLatestData handles GET /api/v1/market/latest/:ticker.

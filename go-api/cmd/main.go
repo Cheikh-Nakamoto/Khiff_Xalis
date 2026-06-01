@@ -18,6 +18,7 @@ import (
 	"github.com/brvm/go-api/internal/repository"
 	"github.com/brvm/go-api/internal/service"
 	"github.com/gofiber/fiber/v2"
+	"github.com/ansrivas/fiberprometheus/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/gofiber/fiber/v2/middleware/logger"
@@ -80,6 +81,7 @@ func main() {
 		AppName:      "BRVM Trading Engine API",
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  120 * time.Second,
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
 			log.Printf("ERROR: %s %s - %v", c.Method(), c.Path(), err)
 			return c.Status(500).JSON(fiber.Map{"error": "Internal server error"})
@@ -90,6 +92,12 @@ func main() {
 	app.Use(recover.New())
 	app.Use(logger.New(logger.Config{Format: "[${time}] ${status} - ${method} ${path}\n"}))
 	app.Use(middleware.SecurityHeaders)
+
+	// Prometheus metrics
+	prometheus := fiberprometheus.New("brvm_go_api")
+	prometheus.RegisterAt(app, "/metrics")
+	app.Use(prometheus.Middleware)
+
 	app.Use(cors.New(cors.Config{
 		AllowOrigins:     model.GetEnv("CORS_ORIGINS", "http://localhost:3000"),
 		AllowMethods:     "GET,POST,PUT,DELETE",
@@ -117,8 +125,31 @@ func main() {
 	api.Get("/market/data/:ticker", marketH.GetMarketData)
 	api.Get("/market/latest/:ticker", marketH.GetLatestData)
 	api.Get("/fundamental/:ticker", marketH.GetFundamental)
+
+	// Specific Rate Limiter for heavy scan operations
+	scanLimiter := limiter.New(limiter.Config{
+		Max:        5, // 5 scans per minute per user/IP
+		Expiration: 1 * time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			user := c.Locals("user")
+			if user != nil {
+				if token, ok := user.(*jwt.Token); ok {
+					if claims, ok := token.Claims.(jwt.MapClaims); ok {
+						if userID, ok := claims["user_id"].(string); ok {
+							return userID
+						}
+					}
+				}
+			}
+			return c.IP()
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(429).JSON(fiber.Map{"error": "Too many scan requests. Please wait."})
+		},
+	})
+
+	api.Get("/signals/scan", scanLimiter, signalH.ScanSignals) // MUST be before /:ticker
 	api.Get("/signals/:ticker", signalH.GetSignal)
-	api.Get("/signals/scan", signalH.ScanSignals)
 
 	// Protected routes (JWT required)
 	protected := api.Group("", middleware.JWTMiddleware(jwtSecret))
@@ -134,6 +165,9 @@ func main() {
 			return
 		}
 		t, err := jwt.Parse(token, func(t *jwt.Token) (interface{}, error) {
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+			}
 			return []byte(jwtSecret), nil
 		})
 		if err != nil || !t.Valid {

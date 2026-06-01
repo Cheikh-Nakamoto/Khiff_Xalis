@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -70,8 +71,8 @@ func HashPassword(password string) (string, error) {
 	if _, err := rand.Read(salt); err != nil {
 		return "", fmt.Errorf("failed to generate salt: %w", err)
 	}
-	hash := argon2.IDKey([]byte(password), salt, 1, 64*1024, 4, 32)
-	return fmt.Sprintf("%x:%x", salt, hash), nil
+	hash := argon2.IDKey([]byte(password), salt, 3, 64*1024, 4, 32)
+	return hex.EncodeToString(salt) + ":" + hex.EncodeToString(hash), nil
 }
 
 // VerifyPassword checks a plaintext password against an Argon2id hash.
@@ -80,8 +81,10 @@ func VerifyPassword(password, stored string) bool {
 	if len(parts) != 2 {
 		return false
 	}
-	var salt []byte
-	fmt.Sscanf(parts[0], "%x", &salt)
-	hash := argon2.IDKey([]byte(password), salt, 1, 64*1024, 4, 32)
-	return fmt.Sprintf("%x", hash) == parts[1]
+	salt, err := hex.DecodeString(parts[0])
+	if err != nil {
+		return false
+	}
+	hash := argon2.IDKey([]byte(password), salt, 3, 64*1024, 4, 32)
+	return hex.EncodeToString(hash) == parts[1]
 }

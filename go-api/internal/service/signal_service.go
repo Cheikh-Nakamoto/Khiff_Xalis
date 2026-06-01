@@ -12,6 +12,7 @@ import (
 	"github.com/brvm/go-api/internal/repository"
 	pb "github.com/brvm/go-api/proto"
 	"github.com/redis/go-redis/v9"
+	"golang.org/x/sync/errgroup"
 )
 
 // SignalService handles signal generation, caching, and Redis pub/sub.
@@ -28,7 +29,12 @@ func (s *SignalService) GetSignal(ctx context.Context, ticker string) (cached bo
 	// Check Redis cache
 	cachedData, cacheErr := s.Redis.Get(ctx, "signal:"+ticker).Result()
 	if cacheErr == nil && cachedData != "" {
-		return true, &model.SignalResult{}, nil // cached flag is enough; caller uses raw string
+		var sr model.SignalResult
+		if jsonErr := json.Unmarshal([]byte(cachedData), &sr); jsonErr == nil {
+			return true, &sr, nil
+		}
+		// Cache corrupted — fall through to regenerate
+		log.Printf("Cache unmarshal error for %s, regenerating: %v", ticker, cacheErr)
 	}
 
 	// If engine is available, call Rust Engine via gRPC
@@ -84,7 +90,22 @@ func (s *SignalService) callEngineForSignal(ctx context.Context, ticker string) 
 		}
 	}
 
-	resp, err := s.Engine.GenerateSignal(ctx, ticker, prices, volumes, highs, lows, currentPrice, pbFund)
+	// Fetch macroeconomic data (optional)
+	macroData, _ := s.MarketRepo.GetMacroData(ctx, ticker)
+	var pbMacro *pb.MacroData
+	if macroData != nil {
+		pbMacro = &pb.MacroData{
+			Inflation:          macroData.Inflation,
+			TauxDirecteur:      macroData.TauxDirecteur,
+			ChangeXofEur:       macroData.ChangeXofEur,
+			CocoaPrice:         macroData.CocoaPrice,
+			OilPrice:           macroData.OilPrice,
+			PoliticalStability: macroData.PoliticalStability,
+			SovereignRating:    macroData.SovereignRating,
+		}
+	}
+
+	resp, err := s.Engine.GenerateSignal(ctx, ticker, prices, volumes, highs, lows, currentPrice, pbFund, pbMacro)
 	if err != nil {
 		return nil, err
 	}
@@ -147,49 +168,78 @@ func (s *SignalService) ScanSignals(ctx context.Context, minScore float64, signa
 // callEngineForScan calls the Rust Engine via gRPC for all BRVM tickers.
 func (s *SignalService) callEngineForScan(ctx context.Context, minScore float64, signalType string) ([]model.SignalResult, error) {
 	tickers := model.BRVMTickers()
-	var tickerData []*pb.TickerData
+	tickerData := make([]*pb.TickerData, len(tickers))
 
-	for _, t := range tickers {
-		prices, volumes, highs, lows, err := s.MarketRepo.GetPricesAndVolumes(ctx, t.Symbol, 90)
-		if err != nil || len(prices) == 0 {
-			continue
-		}
+	var eg errgroup.Group
+	eg.SetLimit(10) // Limit concurrency to avoid exhausting DB connections
 
-		td := &pb.TickerData{
-			Symbol:       t.Symbol,
-			Name:         t.Name,
-			Country:      t.Country,
-			Sector:       t.Sector,
-			Prices:       prices,
-			Volumes:      volumes,
-			Highs:        highs,
-			Lows:         lows,
-			CurrentPrice: prices[0],
-		}
-
-		// Fetch fundamental data (optional)
-		fund, _ := s.MarketRepo.GetFundamentals(ctx, t.Symbol)
-		if fund != nil {
-			td.Fundamental = &pb.FundamentalData{
-				Per:               fund.PER,
-				Roe:               fund.ROE,
-				DividendYield:     fund.DividendYield,
-				Eps:               fund.EPS,
-				BookValuePerShare: fund.BookValuePerShare,
-				DebtToEquity:      fund.DebtToEquity,
-				RevenueGrowth:     fund.RevenueGrowth,
-				NetProfit:         fund.NetProfit,
+	for i, t := range tickers {
+		i, t := i, t
+		eg.Go(func() error {
+			prices, volumes, highs, lows, err := s.MarketRepo.GetPricesAndVolumes(ctx, t.Symbol, 90)
+			if err != nil || len(prices) == 0 {
+				return nil
 			}
-		}
 
-		tickerData = append(tickerData, td)
+			td := &pb.TickerData{
+				Symbol:       t.Symbol,
+				Name:         t.Name,
+				Country:      t.Country,
+				Sector:       t.Sector,
+				Prices:       prices,
+				Volumes:      volumes,
+				Highs:        highs,
+				Lows:         lows,
+				CurrentPrice: prices[0],
+			}
+
+			fund, _ := s.MarketRepo.GetFundamentals(ctx, t.Symbol)
+			if fund != nil {
+				td.Fundamental = &pb.FundamentalData{
+					Per:               fund.PER,
+					Roe:               fund.ROE,
+					DividendYield:     fund.DividendYield,
+					Eps:               fund.EPS,
+					BookValuePerShare: fund.BookValuePerShare,
+					DebtToEquity:      fund.DebtToEquity,
+					RevenueGrowth:     fund.RevenueGrowth,
+					NetProfit:         fund.NetProfit,
+				}
+			}
+
+			macroData, _ := s.MarketRepo.GetMacroData(ctx, t.Symbol)
+			if macroData != nil {
+				td.Macro = &pb.MacroData{
+					Inflation:          macroData.Inflation,
+					TauxDirecteur:      macroData.TauxDirecteur,
+					ChangeXofEur:       macroData.ChangeXofEur,
+					CocoaPrice:         macroData.CocoaPrice,
+					OilPrice:           macroData.OilPrice,
+					PoliticalStability: macroData.PoliticalStability,
+					SovereignRating:    macroData.SovereignRating,
+				}
+			}
+
+			tickerData[i] = td
+			return nil
+		})
 	}
 
-	if len(tickerData) == 0 {
+	_ = eg.Wait()
+
+	// Filter out nil entries (tickers with errors or no data)
+	var finalTickerData []*pb.TickerData
+	for _, td := range tickerData {
+		if td != nil {
+			finalTickerData = append(finalTickerData, td)
+		}
+	}
+
+	if len(finalTickerData) == 0 {
 		return nil, fmt.Errorf("no tickers with market data")
 	}
 
-	signals, err := s.Engine.ScanAllTickers(ctx, tickerData)
+	signals, err := s.Engine.ScanAllTickers(ctx, finalTickerData)
 	if err != nil {
 		return nil, err
 	}

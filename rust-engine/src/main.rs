@@ -15,7 +15,8 @@ use signals::*;
 // Import from lib.rs
 use brvm_engine::{
     FundamentalData as EngineFundamentalData, SignalGenerationService, Ticker,
-    TechnicalAnalysisService, scan_all_tickers,
+    scan_all_tickers_with_macro,
+    MacroData as EngineMacroData,
 };
 use std::collections::HashMap;
 
@@ -52,7 +53,20 @@ impl SignalService for SignalServiceImpl {
             None => EngineFundamentalData::default(),
         };
 
-        let result = self.engine.generate_signal(
+        let macro_data = match req.r#macro {
+            Some(m) => EngineMacroData {
+                inflation: m.inflation,
+                taux_directeur: m.taux_directeur,
+                change_xof_eur: m.change_xof_eur,
+                cocoa_price: m.cocoa_price,
+                oil_price: m.oil_price,
+                political_stability: m.political_stability,
+                sovereign_rating: m.sovereign_rating,
+            },
+            None => EngineMacroData::default(),
+        };
+
+        let result = self.engine.generate_signal_with_macro(
             ticker,
             &req.prices,
             &req.volumes,
@@ -60,6 +74,8 @@ impl SignalService for SignalServiceImpl {
             &req.lows,
             &fundamental,
             req.current_price,
+            &macro_data,
+            &[],
         );
 
         let response = SignalResponse {
@@ -84,6 +100,9 @@ impl SignalService for SignalServiceImpl {
             fundamental_scores: result.fundamental_scores,
             technical_score: result.technical_score,
             risk_score: result.risk_score,
+            macro_score: result.macro_score,
+            diversification_score: result.diversification_score,
+            macro_reasons: result.macro_reasons,
         };
 
         Ok(Response::new(response))
@@ -109,6 +128,7 @@ impl SignalService for SignalServiceImpl {
         let mut data_map = HashMap::new();
         let mut fund_map = HashMap::new();
         let mut current_prices = HashMap::new();
+        let mut macro_map = HashMap::new();
 
         for t in &req.tickers {
             data_map.insert(t.symbol.clone(), (t.prices.clone(), t.volumes.clone(), t.highs.clone(), t.lows.clone()));
@@ -129,9 +149,24 @@ impl SignalService for SignalServiceImpl {
                     },
                 );
             }
+
+            if let Some(ref m) = t.r#macro {
+                macro_map.insert(
+                    t.symbol.clone(),
+                    EngineMacroData {
+                        inflation: m.inflation,
+                        taux_directeur: m.taux_directeur,
+                        change_xof_eur: m.change_xof_eur,
+                        cocoa_price: m.cocoa_price,
+                        oil_price: m.oil_price,
+                        political_stability: m.political_stability,
+                        sovereign_rating: m.sovereign_rating,
+                    },
+                );
+            }
         }
 
-        let results = scan_all_tickers(tickers, data_map, fund_map, current_prices);
+        let results = scan_all_tickers_with_macro(tickers, data_map, fund_map, current_prices, macro_map, &[]);
 
         let signals: Vec<SignalResponse> = results
             .into_iter()
@@ -157,6 +192,9 @@ impl SignalService for SignalServiceImpl {
                 fundamental_scores: r.fundamental_scores,
                 technical_score: r.technical_score,
                 risk_score: r.risk_score,
+                macro_score: r.macro_score,
+                diversification_score: r.diversification_score,
+                macro_reasons: r.macro_reasons,
             })
             .collect();
 

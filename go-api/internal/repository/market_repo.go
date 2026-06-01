@@ -44,6 +44,44 @@ func (r *MarketRepo) GetMarketData(ctx context.Context, ticker string, days int)
 	return data, nil
 }
 
+// GetMarketDataPaginated returns paginated OHLCV bars for a ticker.
+func (r *MarketRepo) GetMarketDataPaginated(ctx context.Context, ticker string, limit, offset int) ([]model.MarketDataPoint, int64, error) {
+	var total int64
+	err := r.DB.QueryRow(ctx, "SELECT COUNT(*) FROM market_data WHERE ticker = $1", ticker).Scan(&total)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	rows, err := r.DB.Query(ctx,
+		`SELECT time, open, high, low, close, volume, source
+		 FROM market_data
+		 WHERE ticker = $1
+		 ORDER BY time DESC
+		 LIMIT $2 OFFSET $3`,
+		ticker, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var data []model.MarketDataPoint
+	for rows.Next() {
+		var d model.MarketDataPoint
+		var t time.Time
+		var source string
+		if err := rows.Scan(&t, &d.Open, &d.High, &d.Low, &d.Close, &d.Volume, &source); err != nil {
+			continue
+		}
+		d.Date = t.Format("2006-01-02")
+		d.Source = source
+		if len(data) > 0 && data[len(data)-1].Close != 0 {
+			d.DailyReturn = (d.Close - data[len(data)-1].Close) / data[len(data)-1].Close * 100
+		}
+		data = append(data, d)
+	}
+	return data, total, nil
+}
+
 // GetLatestData returns the most recent bar for a ticker.
 func (r *MarketRepo) GetLatestData(ctx context.Context, ticker string) (*model.MarketDataPoint, error) {
 	var d model.MarketDataPoint
@@ -158,4 +196,56 @@ func (r *MarketRepo) GetPricesAndVolumes(ctx context.Context, ticker string, lim
 		lows = append(lows, l)
 	}
 	return prices, volumes, highs, lows, nil
+}
+
+// GetMacroData returns the latest macroeconomic indicators for a ticker's country.
+// Used by the gRPC engine client for macro scoring.
+func (r *MarketRepo) GetMacroData(ctx context.Context, ticker string) (*model.MacroData, error) {
+	// Get the country for this ticker
+	var country string
+	err := r.DB.QueryRow(ctx,
+		`SELECT country FROM fundamental_data WHERE ticker = $1`, ticker).Scan(&country)
+	if err != nil {
+		return nil, err
+	}
+
+	// Fetch latest macro indicators for this country
+	rows, err := r.DB.Query(ctx,
+		`SELECT DISTINCT ON (indicator) indicator, value
+		 FROM macroeconomic_data
+		 WHERE country = $1
+		 ORDER BY indicator, time DESC`, country)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	macro := &model.MacroData{}
+	for rows.Next() {
+		var indicator string
+		var value float64
+		if err := rows.Scan(&indicator, &value); err != nil {
+			continue
+		}
+		v := value
+		switch indicator {
+		case "inflation":
+			macro.Inflation = &v
+		case "taux_directeur":
+			macro.TauxDirecteur = &v
+		case "change_xof_eur":
+			macro.ChangeXofEur = &v
+		case "cocoa_price":
+			macro.CocoaPrice = &v
+		case "oil_price":
+			macro.OilPrice = &v
+		case "political_stability":
+			macro.PoliticalStability = &v
+		case "sovereign_rating":
+			r := int32(v)
+			macro.SovereignRating = &r
+		}
+	}
+
+	return macro, nil
 }

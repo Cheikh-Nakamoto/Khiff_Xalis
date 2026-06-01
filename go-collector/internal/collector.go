@@ -167,24 +167,42 @@ func parseDate(s string) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("cannot parse date: %q", s)
 }
 
-// fetchURL performs an HTTP GET and returns the response body.
+// fetchURL performs an HTTP GET with exponential backoff retries and returns the response body.
 func (c *Collector) fetchURL(url string) ([]byte, error) {
-	resp, err := c.HTTP.Get(url)
-	if err != nil {
-		return nil, fmt.Errorf("fetch %s: %w", url, err)
-	}
-	defer resp.Body.Close()
+	var body []byte
+	var finalErr error
+	maxRetries := 3
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("fetch %s: status %d", url, resp.StatusCode)
+	for i := 0; i < maxRetries; i++ {
+		if i > 0 {
+			time.Sleep(time.Duration(1<<i) * time.Second) // 2s, 4s
+		}
+		resp, err := c.HTTP.Get(url)
+		if err != nil {
+			finalErr = fmt.Errorf("fetch %s: %w", url, err)
+			continue
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			finalErr = fmt.Errorf("fetch %s: status %d", url, resp.StatusCode)
+			if resp.StatusCode >= 500 { // Retry on server errors
+				continue
+			}
+			return nil, finalErr // Fail immediately on 4xx client errors
+		}
+
+		body, err = io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			finalErr = fmt.Errorf("read body %s: %w", url, err)
+			continue
+		}
+
+		return body, nil
 	}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read body %s: %w", url, err)
-	}
-
-	return body, nil
+	return nil, fmt.Errorf("failed after %d retries: %v", maxRetries, finalErr)
 }
 
 // batchInsertMarketData inserts OHLCV records using pgx.Batch for performance.

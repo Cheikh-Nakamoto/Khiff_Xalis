@@ -69,6 +69,17 @@ type FundamentalData struct {
 	UpdatedAt         time.Time `json:"updated_at"`
 }
 
+// MacroData holds macroeconomic indicators for scoring.
+type MacroData struct {
+	Inflation          *float64 `json:"inflation,omitempty"`
+	TauxDirecteur      *float64 `json:"taux_directeur,omitempty"`
+	ChangeXofEur       *float64 `json:"change_xof_eur,omitempty"`
+	CocoaPrice         *float64 `json:"cocoa_price,omitempty"`
+	OilPrice           *float64 `json:"oil_price,omitempty"`
+	PoliticalStability *float64 `json:"political_stability,omitempty"`
+	SovereignRating    *int32   `json:"sovereign_rating,omitempty"`
+}
+
 // SignalResult is the output of the scoring engine.
 type SignalResult struct {
 	Ticker              Ticker                 `json:"ticker"`
@@ -78,6 +89,8 @@ type SignalResult struct {
 	Reasons             []string               `json:"reasons"`
 	TechnicalIndicators map[string]interface{} `json:"technical_indicators"`
 	FundamentalScores   map[string]float64     `json:"fundamental_scores"`
+	MacroScore          float64                `json:"macro_score,omitempty"`
+	MacroReasons        []string               `json:"macro_reasons,omitempty"`
 	Timestamp           time.Time              `json:"timestamp"`
 }
 

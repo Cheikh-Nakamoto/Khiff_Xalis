@@ -55,6 +55,7 @@ func (c *EngineClient) GenerateSignal(
 	lows []float64,
 	currentPrice float64,
 	fundamental *pb.FundamentalData,
+	macroData *pb.MacroData,
 ) (*pb.SignalResponse, error) {
 	req := &pb.SignalRequest{
 		Ticker:       ticker,
@@ -64,6 +65,7 @@ func (c *EngineClient) GenerateSignal(
 		Lows:         lows,
 		CurrentPrice: currentPrice,
 		Fundamental:  fundamental,
+		Macro:        macroData,
 	}
 
 	resp, err := c.client.GenerateSignal(ctx, req)
