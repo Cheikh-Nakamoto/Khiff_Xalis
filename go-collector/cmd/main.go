@@ -6,14 +6,14 @@ package main
 import (
 	"context"
 	"log"
-	"time"
 	"net/http"
+	"time"
 
 	"github.com/brvm/go-collector/internal"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	"github.com/robfig/cron/v3"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {

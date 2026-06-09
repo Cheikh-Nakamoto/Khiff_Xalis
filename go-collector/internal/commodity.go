@@ -10,6 +10,8 @@ import (
 	"log"
 	"net/http"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // CommodityPrice represents a commodity price data point.
@@ -129,7 +131,7 @@ func (c *Collector) CollectCommodities(ctx context.Context) error {
 
 // fetchCocoaPrice fetches the daily cocoa price from ICCO.
 func (c *Collector) fetchCocoaPrice(ctx context.Context) (float64, error) {
-	url := "https://www.icco.org/wp-json/icco/v1/daily-prices?limit=1"
+	url := ICCOCocoaPriceURL
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -165,7 +167,7 @@ func (c *Collector) fetchOilPrice(ctx context.Context) (float64, error) {
 
 // fetchCommodityFromTE pulls generic commodities from the Trading Economics guest API feed.
 func (c *Collector) fetchCommodityFromTE(ctx context.Context, name string) (float64, error) {
-	url := "https://api.tradingeconomics.com/markets/commodities?c=guest:guest&f=json"
+	url := TradingEconomicsCommoditiesURL
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
