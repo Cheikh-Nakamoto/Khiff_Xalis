@@ -2,9 +2,11 @@ package internal
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gocolly/colly/v2"
 )

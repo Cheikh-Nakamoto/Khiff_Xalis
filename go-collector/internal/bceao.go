@@ -119,10 +119,7 @@ func (c *Collector) CollectBCEAO(ctx context.Context) error {
 
 // fetchWorldBankInflation fetches annual inflation rate from World Bank API.
 func (c *Collector) fetchWorldBankInflation(ctx context.Context, countryCode string) (float64, error) {
-	url := fmt.Sprintf(
-		"https://api.worldbank.org/v2/country/%s/indicator/FP.CPI.TOTL.ZG?format=json&date=2023:2026&per_page=5",
-		countryCode,
-	)
+	url := fmt.Sprintf(WorldBankInflationURL, countryCode)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -176,7 +173,7 @@ func (c *Collector) fetchBCEAORate(ctx context.Context) (float64, error) {
 	}
 
 	// Try scraping BRVM/BCEAO news
-	req, err := http.NewRequestWithContext(ctx, "GET", "https://www.brvm.org/fr/taux-directeur", nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", BRVMTauxDirecteurURL, nil)
 	if err != nil {
 		return fallbackRate, nil
 	}
@@ -206,7 +203,7 @@ func (c *Collector) fetchBCEAORate(ctx context.Context) (float64, error) {
 
 // fetchXOFUSDRate fetches the real-time XOF/USD exchange rate.
 func (c *Collector) fetchXOFUSDRate(ctx context.Context) (float64, error) {
-	url := "https://open.er-api.com/v6/latest/USD"
+	url := ERAPIExchangeRateURL
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return 0, err

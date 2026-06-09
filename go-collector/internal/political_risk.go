@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -99,10 +98,7 @@ func (c *Collector) CollectPoliticalRisk(ctx context.Context) error {
 
 // fetchGDELTEvents queries the GDELT API to count political violence articles/events in the past 7 days.
 func (c *Collector) fetchGDELTEvents(ctx context.Context, gdeltCountryName string) (int, error) {
-	url := fmt.Sprintf(
-		"https://api.gdeltproject.org/api/v2/summary/summary?theme=POLITICAL_VIOLENCE&country=%s&format=json&timespan=7days",
-		gdeltCountryName,
-	)
+	url := fmt.Sprintf(GDELTPoliticalViolenceURL, gdeltCountryName)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
