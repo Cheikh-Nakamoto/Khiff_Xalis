@@ -1,6 +1,6 @@
 module github.com/brvm/go-api
 
-go 1.25.0
+go 1.26.3
 
 require (
 	github.com/gofiber/fiber/v2 v2.52.0
