@@ -1,7 +1,7 @@
 // Copyright 2026 BRVM Trading Engine Contributors
 // Licensed under the GNU AGPL-3.0. See LICENSE for details.
 
-package internal
+package source
 
 const (
 	// WorldBankInflationURL is the URL format string to fetch inflation data per country.

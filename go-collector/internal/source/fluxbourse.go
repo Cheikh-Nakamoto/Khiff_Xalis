@@ -1,18 +1,19 @@
-package internal
+// Copyright 2026 BRVM Trading Engine Contributors
+// Licensed under the GNU AGPL-3.0. See LICENSE for details.
+
+package source
 
 import (
-	"context"
 	"fmt"
-	"log"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/brvm/go-collector/internal/domain"
 	"github.com/gocolly/colly/v2"
 )
 
-// collectFluxBourse scrapes fundamental data (PER, dividend yield, ROE, EPS)
-// from fluxbourse.com and upserts into the fundamental_data table.
+// FluxBourseSource scrapes fundamental data (PER, dividend yield, ROE, EPS)
+// from fluxbourse.com.
 //
 // FluxBourse displays a table of BRVM stocks with columns typically including:
 //   - Ticker / Code
@@ -20,15 +21,23 @@ import (
 //   - Rendement (Dividend Yield %)
 //   - ROE (Return on Equity %)
 //   - BPA (EPS - Earnings Per Share)
-//
-// The FLUXBOURSE_URL env var should point to the page containing the table.
-func (c *Collector) CollectFluxBourse(ctx context.Context) error {
-	if c.Config.FluxbourseURL == "" {
-		log.Println("[FLUXBOURSE] No FLUXBOURSE_URL configured, skipping")
-		return nil
-	}
+type FluxBourseSource struct {
+	url string
+}
 
-	var fundamentals []FundamentalRecord
+// NewFluxBourseSource creates a FluxBourseSource. url is the FLUXBOURSE_URL page.
+func NewFluxBourseSource(url string) *FluxBourseSource {
+	return &FluxBourseSource{url: url}
+}
+
+// Configured reports whether a FluxBourse URL was provided.
+func (s *FluxBourseSource) Configured() bool {
+	return s.url != ""
+}
+
+// Fetch scrapes fundamental records, retrying with exponential backoff.
+func (s *FluxBourseSource) Fetch() ([]domain.FundamentalRecord, error) {
+	var fundamentals []domain.FundamentalRecord
 
 	scraper := colly.NewCollector(
 		colly.MaxDepth(1),
@@ -48,7 +57,7 @@ func (c *Collector) CollectFluxBourse(ctx context.Context) error {
 			return
 		}
 
-		rec := FundamentalRecord{Ticker: ticker}
+		rec := domain.FundamentalRecord{Ticker: ticker}
 
 		// Try to extract PER (usually 2nd column).
 		if v, ok := parseFloatPtr(cols[1]); ok {
@@ -87,7 +96,7 @@ func (c *Collector) CollectFluxBourse(ctx context.Context) error {
 			return
 		}
 
-		rec := FundamentalRecord{Ticker: ticker}
+		rec := domain.FundamentalRecord{Ticker: ticker}
 
 		if v, ok := parseFloatFromElement(e, ".per, .pe-ratio"); ok {
 			rec.PER = v
@@ -106,65 +115,16 @@ func (c *Collector) CollectFluxBourse(ctx context.Context) error {
 	})
 
 	var err error
-	maxRetries := 3
+	const maxRetries = 3
 	for i := 0; i < maxRetries; i++ {
 		if i > 0 {
 			time.Sleep(time.Duration(1<<i) * time.Second)
 		}
-		err = scraper.Visit(c.Config.FluxbourseURL)
+		err = scraper.Visit(s.url)
 		if err == nil {
-			break
+			return fundamentals, nil
 		}
-		log.Printf("[FLUXBOURSE] Scrape attempt %d failed: %v", i+1, err)
 	}
 
-	if err != nil {
-		return fmt.Errorf("fluxbourse failed after %d retries: %w", maxRetries, err)
-	}
-
-	log.Printf("[FLUXBOURSE] Scraped %d fundamental records", len(fundamentals))
-
-	// Upsert each record into fundamental_data.
-	var inserted int
-	for _, rec := range fundamentals {
-		if err := c.upsertFundamentalData(ctx, rec); err != nil {
-			log.Printf("[FLUXBOURSE] Upsert %s: %v", rec.Ticker, err)
-			continue
-		}
-		inserted++
-	}
-
-	log.Printf("[FLUXBOURSE] Upserted %d/%d records", inserted, len(fundamentals))
-
-	// Publish update notification.
-	c.RDB.Publish(ctx, "signals:scan", "fluxbourse_updated")
-	return nil
-}
-
-// parseFloatPtr parses a string into a *float64.
-// Returns (nil, false) if the value is empty, dash, or not a valid number.
-func parseFloatPtr(s string) (*float64, bool) {
-	s = strings.TrimSpace(s)
-	s = strings.ReplaceAll(s, ",", ".")
-	s = strings.ReplaceAll(s, " ", "")
-	s = strings.ReplaceAll(s, "%", "")
-
-	if s == "" || s == "-" || s == "N/A" || s == "n/a" {
-		return nil, false
-	}
-
-	v, err := strconv.ParseFloat(s, 64)
-	if err != nil {
-		return nil, false
-	}
-	return &v, true
-}
-
-// parseFloatFromElement extracts text from a CSS selector and parses it.
-func parseFloatFromElement(e *colly.HTMLElement, selector string) (*float64, bool) {
-	text := e.ChildText(selector)
-	if text == "" {
-		return nil, false
-	}
-	return parseFloatPtr(text)
+	return nil, fmt.Errorf("fluxbourse failed after %d retries: %w", maxRetries, err)
 }
