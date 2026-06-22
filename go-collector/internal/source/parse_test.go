@@ -1,4 +1,7 @@
-package internal
+// Copyright 2026 BRVM Trading Engine Contributors
+// Licensed under the GNU AGPL-3.0. See LICENSE for details.
+
+package source
 
 import (
 	"testing"

@@ -1,6 +1,6 @@
 module github.com/brvm/go-collector
 
-go 1.23.0
+go 1.26.3
 
 require (
 	github.com/gocolly/colly/v2 v2.1.0
